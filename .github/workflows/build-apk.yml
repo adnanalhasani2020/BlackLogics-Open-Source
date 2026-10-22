@@ -27,6 +27,61 @@ jobs:
         with:
           gradle-version: '8.13'
 
+      - name: Merge missing bundled Sketchware resources
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+          import xml.etree.ElementTree as ET
+
+          root = Path("app/src/main/res")
+          packs = sorted(Path("app/libs").rglob("res"))
+          values_dir = root / "values"
+          values_dir.mkdir(parents=True, exist_ok=True)
+
+          # Existing names take precedence; merge only missing named values.
+          for pack in packs:
+              if not pack.is_dir() or pack == root:
+                  continue
+              for src in pack.rglob("*"):
+                  if not src.is_file():
+                      continue
+                  rel = src.relative_to(pack)
+                  if rel.parts[0].startswith("values"):
+                      dest = root / rel
+                      dest.parent.mkdir(parents=True, exist_ok=True)
+                      if not dest.exists():
+                          shutil.copy2(src, dest)
+                          continue
+                      if src.suffix != ".xml" or dest.suffix != ".xml":
+                          continue
+                      try:
+                          source_tree = ET.parse(src)
+                          dest_tree = ET.parse(dest)
+                          source_root = source_tree.getroot()
+                          dest_root = dest_tree.getroot()
+                          existing = {(e.tag, e.attrib.get("name")) for e in dest_root if e.attrib.get("name")}
+                          changed = False
+                          for element in source_root:
+                              name = element.attrib.get("name")
+                              key = (element.tag, name)
+                              if name and key not in existing:
+                                  dest_root.append(element)
+                                  existing.add(key)
+                                  changed = True
+                          if changed:
+                              dest_tree.write(dest, encoding="utf-8", xml_declaration=True)
+                      except (ET.ParseError, OSError):
+                          pass
+                  else:
+                      dest = root / rel
+                      if not dest.exists():
+                          dest.parent.mkdir(parents=True, exist_ok=True)
+                          shutil.copy2(src, dest)
+          print("Merged missing bundled resources while preserving existing app resources.")
+          PY
+
       - name: Convert unsupported SVG Android resources to PNG
         shell: bash
         run: |
