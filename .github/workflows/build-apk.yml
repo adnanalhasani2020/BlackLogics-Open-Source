@@ -71,11 +71,11 @@ jobs:
                           dest_tree = ET.parse(dest)
                           source_root = source_tree.getroot()
                           dest_root = dest_tree.getroot()
-                          existing = {(e.tag, e.attrib.get("name")) for e in dest_root if e.attrib.get("name")}
+                          existing = {((e.attrib.get("type") if e.tag == "item" else e.tag), e.attrib.get("name")) for e in dest_root if e.attrib.get("name")}
                           changed = False
                           for element in source_root:
                               name = element.attrib.get("name")
-                              key = (element.tag, name)
+                              key = ((element.attrib.get("type") if element.tag == "item" else element.tag), name)
                               if name and key not in existing:
                                   dest_root.append(element)
                                   existing.add(key)
@@ -84,7 +84,7 @@ jobs:
                           seen = set()
                           for element in list(dest_root):
                               name = element.attrib.get("name")
-                              key = (element.tag, name)
+                              key = ((element.attrib.get("type") if element.tag == "item" else element.tag), name)
                               if name and key in seen:
                                   dest_root.remove(element)
                                   changed = True
@@ -110,7 +110,7 @@ jobs:
                   changed = False
                   for element in list(top):
                       name = element.attrib.get("name")
-                      key = (element.tag, name)
+                      key = ((element.attrib.get("type") if element.tag == "item" else element.tag), name)
                       if name and key in seen:
                           top.remove(element)
                           changed = True
