@@ -98,6 +98,25 @@ jobs:
                       if not dest.exists():
                           dest.parent.mkdir(parents=True, exist_ok=True)
                           shutil.copy2(src, dest)
+          # Final pass: deduplicate every merged values XML file, including the app's originals.
+          for dest in root.glob("values*/*.xml"):
+              try:
+                  tree = ET.parse(dest)
+                  top = tree.getroot()
+                  seen = set()
+                  changed = False
+                  for element in list(top):
+                      name = element.attrib.get("name")
+                      key = (element.tag, name)
+                      if name and key in seen:
+                          top.remove(element)
+                          changed = True
+                      elif name:
+                          seen.add(key)
+                  if changed:
+                      tree.write(dest, encoding="utf-8", xml_declaration=True)
+              except (ET.ParseError, OSError):
+                  pass
           print("Merged missing bundled resources, skipped invalid filenames, and removed duplicate values.")
           PY
 
