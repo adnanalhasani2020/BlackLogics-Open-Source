@@ -51,6 +51,9 @@ jobs:
                   if not src.is_file():
                       continue
                   rel = src.relative_to(pack)
+                  # These generated aggregate files duplicate AndroidX dependency attrs.
+                  if rel.name == "values.xml":
+                      continue
                   if rel.parts[0].startswith("values"):
                       dest = root / rel
                       dest.parent.mkdir(parents=True, exist_ok=True)
