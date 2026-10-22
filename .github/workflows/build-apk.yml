@@ -32,15 +32,18 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
           import shutil
           import xml.etree.ElementTree as ET
 
           root = Path("app/src/main/res")
           packs = sorted(Path("app/libs").rglob("res"))
-          values_dir = root / "values"
-          values_dir.mkdir(parents=True, exist_ok=True)
 
-          # Existing names take precedence; merge only missing named values.
+          def valid_resource_filename(path):
+              name = path.name[:-6] if path.name.endswith(".9.png") else path.stem
+              return bool(re.fullmatch(r"[a-z0-9_]+", name))
+
+          # Copy only valid, missing file-based resources; app resources win.
           for pack in packs:
               if not pack.is_dir() or pack == root:
                   continue
@@ -52,7 +55,11 @@ jobs:
                       dest = root / rel
                       dest.parent.mkdir(parents=True, exist_ok=True)
                       if not dest.exists():
-                          shutil.copy2(src, dest)
+                          try:
+                              ET.parse(src)
+                              shutil.copy2(src, dest)
+                          except ET.ParseError:
+                              pass
                           continue
                       if src.suffix != ".xml" or dest.suffix != ".xml":
                           continue
@@ -70,16 +77,28 @@ jobs:
                                   dest_root.append(element)
                                   existing.add(key)
                                   changed = True
+                          # Remove duplicates already present in destination values files.
+                          seen = set()
+                          for element in list(dest_root):
+                              name = element.attrib.get("name")
+                              key = (element.tag, name)
+                              if name and key in seen:
+                                  dest_root.remove(element)
+                                  changed = True
+                              elif name:
+                                  seen.add(key)
                           if changed:
                               dest_tree.write(dest, encoding="utf-8", xml_declaration=True)
                       except (ET.ParseError, OSError):
                           pass
                   else:
+                      if not valid_resource_filename(src):
+                          continue
                       dest = root / rel
                       if not dest.exists():
                           dest.parent.mkdir(parents=True, exist_ok=True)
                           shutil.copy2(src, dest)
-          print("Merged missing bundled resources while preserving existing app resources.")
+          print("Merged missing bundled resources, skipped invalid filenames, and removed duplicate values.")
           PY
 
       - name: Convert unsupported SVG Android resources to PNG
