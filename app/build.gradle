@@ -3,6 +3,13 @@ plugins {
 }
 
 android {
+    sourceSets {
+        main {
+            // Merge bundled legacy Sketchware resource packs that the app references.
+            res.srcDirs += ['src/main/res', 'libs/sketchware-resource/res', 'libs/resource/res']
+        }
+    }
+
     compileSdk 34
 
     useLibrary 'org.apache.http.legacy'
