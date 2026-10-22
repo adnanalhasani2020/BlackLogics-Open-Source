@@ -43,6 +43,18 @@ jobs:
               name = path.name[:-6] if path.name.endswith(".9.png") else path.stem
               return bool(re.fullmatch(r"[a-z0-9_]+", name))
 
+          def resource_key(rel):
+              folder = rel.parts[0]
+              if folder.endswith("-v4"):
+                  folder = folder[:-3]
+              filename = rel.name[:-6] if rel.name.endswith(".9.png") else rel.stem
+              return (folder, filename)
+
+          existing_files = set()
+          for current in root.rglob("*"):
+              if current.is_file() and not current.relative_to(root).parts[0].startswith("values"):
+                  existing_files.add(resource_key(current.relative_to(root)))
+
           # Copy only valid, missing file-based resources; app resources win.
           for pack in packs:
               if not pack.is_dir() or pack == root:
@@ -97,10 +109,14 @@ jobs:
                   else:
                       if not valid_resource_filename(src):
                           continue
+                      key = resource_key(rel)
+                      if key in existing_files:
+                          continue
                       dest = root / rel
                       if not dest.exists():
                           dest.parent.mkdir(parents=True, exist_ok=True)
                           shutil.copy2(src, dest)
+                          existing_files.add(key)
           # Final pass: deduplicate every merged values XML file, including the app's originals.
           for dest in root.glob("values*/*.xml"):
               try:
