@@ -25,7 +25,7 @@ android {
 
     packaging {
         resources {
-            pickFirsts += ['kotlin/internal/internal.kotlin_builtins']
+            pickFirsts += ['kotlin/**', 'META-INF/*.kotlin_module']
         }
     }
 }
