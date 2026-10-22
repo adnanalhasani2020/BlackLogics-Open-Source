@@ -332,4 +332,9 @@
     <item name="cornerFamily">rounded</item>
     <item name="cornerSize">50%</item>
 </style>
+    <style name="AppTheme.DebugActivity" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:colorAccent">@color/colorAccent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
 </resources>
