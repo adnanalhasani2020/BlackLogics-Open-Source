@@ -27,6 +27,23 @@ jobs:
         with:
           gradle-version: '8.13'
 
+      - name: Convert unsupported SVG Android resources to PNG
+        shell: bash
+        run: |
+          set -euo pipefail
+          if find app/src/main/res -type f -name '*.svg' -print -quit | grep -q .; then
+            sudo apt-get update
+            sudo apt-get install -y librsvg2-bin
+            while IFS= read -r -d '' svg; do
+              png="${svg%.svg}.png"
+              echo "Converting $svg -> $png"
+              rsvg-convert --format png --output "$png" "$svg"
+              rm "$svg"
+            done < <(find app/src/main/res -type f -name '*.svg' -print0)
+          else
+            echo "No SVG resources found."
+          fi
+
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
 
