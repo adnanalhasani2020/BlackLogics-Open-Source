@@ -29,4 +29,5 @@
 	<dimen name="offset_8dp">8dp</dimen>
 	<dimen name="offset_12dp">12dp</dimen>
 	<dimen name="offset_16dp">16dp</dimen>
+    <dimen name="m3_comp_primary_navigation_tab_divider_height">1dp</dimen>
 </resources>
