@@ -37,106 +37,103 @@ jobs:
           import xml.etree.ElementTree as ET
 
           root = Path("app/src/main/res")
-          packs = sorted(Path("app/libs").rglob("res"))
+          libs = Path("app/libs")
 
-          def valid_resource_filename(path):
+          def resource_type(element):
+              if element.tag == "item":
+                  return element.attrib.get("type", "item")
+              return element.tag
+
+          def resource_key(element):
+              name = element.attrib.get("name")
+              return (resource_type(element), name) if name else None
+
+          def valid_filename(path):
               name = path.name[:-6] if path.name.endswith(".9.png") else path.stem
               return bool(re.fullmatch(r"[a-z0-9_]+", name))
 
-          def resource_key(rel):
-              folder = rel.parts[0]
-              if folder.endswith("-v4"):
-                  folder = folder[:-3]
-              filename = rel.name[:-6] if rel.name.endswith(".9.png") else rel.stem
-              return (folder, filename)
+          # Track resources already supplied by the app, across all values XML files.
+          known = set()
+          for values_file in root.glob("values*/*.xml"):
+              try:
+                  tree = ET.parse(values_file)
+                  for element in tree.getroot():
+                      key = resource_key(element)
+                      if key:
+                          known.add(key)
+              except ET.ParseError:
+                  pass
 
-          existing_files = set()
-          for current in root.rglob("*"):
-              if current.is_file() and not current.relative_to(root).parts[0].startswith("values"):
-                  existing_files.add(resource_key(current.relative_to(root)))
-
-          # Copy only valid, missing file-based resources; app resources win.
-          for pack in packs:
-              if not pack.is_dir() or pack == root:
+          # Merge named values individually so existing app values win and duplicates
+          # from bundled AAR extracts cannot break AAPT resource linking.
+          for source_res in sorted(libs.rglob("res")):
+              if not source_res.is_dir() or "AntiSplit" in source_res.parts:
                   continue
-              for src in pack.rglob("*"):
+              for src in source_res.rglob("*"):
                   if not src.is_file():
                       continue
-                  rel = src.relative_to(pack)
-                  # These generated aggregate files duplicate AndroidX dependency attrs.
-                  if rel.name in ("values.xml", "integers.xml"):
-                      continue
+                  rel = src.relative_to(source_res)
                   if rel.parts[0].startswith("values"):
-                      dest = root / rel
-                      dest.parent.mkdir(parents=True, exist_ok=True)
-                      if not dest.exists():
-                          try:
-                              ET.parse(src)
-                              shutil.copy2(src, dest)
-                          except ET.ParseError:
-                              pass
-                          continue
-                      if src.suffix != ".xml" or dest.suffix != ".xml":
-                          continue
+                      if src.suffix != ".xml" or src.name in ("values.xml", "integers.xml"):
+                          # Aggregate values files can contain stale/generated duplicates;
+                          # named resources in other XML files are merged below instead.
+                          if src.suffix != ".xml":
+                              continue
+                          if src.name in ("values.xml", "integers.xml"):
+                              try:
+                                  source_tree = ET.parse(src)
+                              except ET.ParseError:
+                                  continue
+                          else:
+                              continue
                       try:
                           source_tree = ET.parse(src)
-                          dest_tree = ET.parse(dest)
-                          source_root = source_tree.getroot()
-                          dest_root = dest_tree.getroot()
-                          existing = {((e.attrib.get("type") if e.tag == "item" else e.tag), e.attrib.get("name")) for e in dest_root if e.attrib.get("name")}
-                          changed = False
-                          for element in source_root:
-                              name = element.attrib.get("name")
-                              key = ((element.attrib.get("type") if element.tag == "item" else element.tag), name)
-                              if name and key not in existing:
-                                  dest_root.append(element)
-                                  existing.add(key)
-                                  changed = True
-                          # Remove duplicates already present in destination values files.
-                          seen = set()
-                          for element in list(dest_root):
-                              name = element.attrib.get("name")
-                              key = ((element.attrib.get("type") if element.tag == "item" else element.tag), name)
-                              if name and key in seen:
-                                  dest_root.remove(element)
-                                  changed = True
-                              elif name:
-                                  seen.add(key)
-                          if changed:
-                              dest_tree.write(dest, encoding="utf-8", xml_declaration=True)
-                      except (ET.ParseError, OSError):
-                          pass
-                  else:
-                      if not valid_resource_filename(src):
+                      except (ET.ParseError, UnboundLocalError):
                           continue
-                      key = resource_key(rel)
-                      if key in existing_files:
+                      qualifier = rel.parts[0]
+                      dest_dir = root / qualifier
+                      dest_dir.mkdir(parents=True, exist_ok=True)
+                      dest = dest_dir / "merged_bundled_resources.xml"
+                      if dest.exists():
+                          try:
+                              dest_tree = ET.parse(dest)
+                          except ET.ParseError:
+                              dest_tree = ET.ElementTree(ET.Element("resources"))
+                      else:
+                          dest_tree = ET.ElementTree(ET.Element("resources"))
+                      dest_root = dest_tree.getroot()
+                      changed = False
+                      for element in source_tree.getroot():
+                          key = resource_key(element)
+                          if not key or key in known:
+                              continue
+                          dest_root.append(element)
+                          known.add(key)
+                          changed = True
+                      if changed:
+                          dest_tree.write(dest, encoding="utf-8", xml_declaration=True)
+                  else:
+                      if not valid_filename(src) or src.name.startswith("dup_"):
+                          continue
+                      folder = rel.parts[0]
+                      # Android treats -v4 as a compatibility alias for the base qualifier.
+                      normalized_folder = folder[:-3] if folder.endswith("-v4") else folder
+                      name = src.name[:-6] if src.name.endswith(".9.png") else src.stem
+                      key = (normalized_folder, name)
+                      existing = set()
+                      for current in root.rglob("*"):
+                          if current.is_file():
+                              current_rel = current.relative_to(root)
+                              current_folder = current_rel.parts[0]
+                              current_folder = current_folder[:-3] if current_folder.endswith("-v4") else current_folder
+                              current_name = current.name[:-6] if current.name.endswith(".9.png") else current.stem
+                              existing.add((current_folder, current_name))
+                      if key in existing:
                           continue
                       dest = root / rel
-                      if not dest.exists():
-                          dest.parent.mkdir(parents=True, exist_ok=True)
-                          shutil.copy2(src, dest)
-                          existing_files.add(key)
-          # Final pass: deduplicate every merged values XML file, including the app's originals.
-          for dest in root.glob("values*/*.xml"):
-              try:
-                  tree = ET.parse(dest)
-                  top = tree.getroot()
-                  seen = set()
-                  changed = False
-                  for element in list(top):
-                      name = element.attrib.get("name")
-                      key = ((element.attrib.get("type") if element.tag == "item" else element.tag), name)
-                      if name and key in seen:
-                          top.remove(element)
-                          changed = True
-                      elif name:
-                          seen.add(key)
-                  if changed:
-                      tree.write(dest, encoding="utf-8", xml_declaration=True)
-              except (ET.ParseError, OSError):
-                  pass
-          print("Merged missing bundled resources, skipped invalid filenames, and removed duplicate values.")
+                      dest.parent.mkdir(parents=True, exist_ok=True)
+                      shutil.copy2(src, dest)
+          print("Merged only missing named resources; ignored AntiSplit duplicate-ID resources.")
           PY
 
       - name: Convert unsupported SVG Android resources to PNG
