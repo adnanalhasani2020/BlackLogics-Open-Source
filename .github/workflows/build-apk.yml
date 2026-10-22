@@ -64,7 +64,7 @@ jobs:
                       continue
                   rel = src.relative_to(pack)
                   # These generated aggregate files duplicate AndroidX dependency attrs.
-                  if rel.name == "values.xml":
+                  if rel.name in ("values.xml", "integers.xml"):
                       continue
                   if rel.parts[0].startswith("values"):
                       dest = root / rel
